@@ -11,8 +11,8 @@ wandb.login()
 
 base_model_id = "mistralai/Mistral-7B-v0.1"
 
-data_set = load_dataset('json', data_files="format_sci_fi_data2.jsonl", split='train')
-max_length= 1000
+data_set = load_dataset('json', data_files='format_sci_fi_data2.jsonl', split='train')
+max_length = 1000
 lora_target_modules = [    # which layers to apply lora to
         "q_proj",
         "k_proj",
@@ -24,34 +24,30 @@ lora_target_modules = [    # which layers to apply lora to
         "lm_head",
     ]
 
-
-lora_dropout = 0.05 # Dropout for lora weights to avoid overfitting
+lora_dropout = 0.05 # dropout for lora weights to avoid overfitting
 lora_bias = "none"
-lora_r=32 # Bottleneck size between A and B matrix for lora params
+lora_r=32 # bottleneck size between A and B matrix for lora params
 lora_alpha=64 # how much to weigh LoRA params over pretrained params
-
 
 project = "sci-fi-finetune"
 base_model_name = "mistral7b"
 run_name = base_model_name + "-" + project
 output_dir = "./" + run_name
 
-
-warmup_steps=1
-per_device_train_batch_size=4
-gradient_accumulation_steps=1
-max_steps=500
-learning_rate=0.00005
+warmup_steps=5
+per_device_train_batch_size=12
+gradient_accumulation_steps=2
+learning_rate=1e-5
 bf16=True
-optim_type = "paged_adamw_8bit" # optimizer
-logging_steps=25             # When to start reporting loss
+optim_type ="paged_adamw_8bit" # optimizer
+logging_steps=25              
 logging_dir="./logs"        
-save_strategy="steps"       # Save the model checkpoint every logging step
-save_steps=25                # Save checkpoints every 25 steps
-evaluation_strategy="steps" # Evaluate the model every logging step
-eval_steps=25               # Evaluate and save checkpoints every 25 steps
+save_strategy="steps"       # save the model checkpoint every logging step
+save_steps=25               
+evaluation_strategy="steps" # evaluate the model every logging step
+eval_steps=25              
 report_to="wandb"          
-run_name=f"{run_name}-{datetime.now().strftime('%Y-%m-%d-%H-%M')}"    
+run_name=f"{run_name}-{datetime.now().strftime('%Y-%m-%d-%H-%M')}"     
 
 
 
@@ -109,15 +105,29 @@ model = prepare_model_for_kbit_training(model)
 
 
 
+def print_trainable_parameters(model):
+    """
+    Prints the number of trainable parameters in the model.
+    """
+    trainable_params = 0
+    all_param = 0
+    for _, param in model.named_parameters():
+        all_param += param.numel()
+        if param.requires_grad:
+            trainable_params += param.numel()
+    print(
+        f"trainable params: {trainable_params} || all params: {all_param} || trainable%: {100 * trainable_params / all_param}"
+    )
+
+
 config = LoraConfig(
     r=lora_r,
     lora_alpha=lora_alpha,
     target_modules=lora_target_modules,
     bias=lora_bias,
     lora_dropout=lora_dropout, 
-    task_type="CAUSAL_LM",
+    task_type="CAUSAL_LM"
 )
-
 
 model = get_peft_model(model, config)
 print_trainable_parameters(model)
@@ -137,7 +147,6 @@ training_args = TrainingArguments(
         per_device_train_batch_size=per_device_train_batch_size,
         gradient_accumulation_steps=gradient_accumulation_steps,
         gradient_checkpointing=True,
-        max_steps=max_steps,
         learning_rate=learning_rate, 
         bf16=True,
         optim=optim_type,
