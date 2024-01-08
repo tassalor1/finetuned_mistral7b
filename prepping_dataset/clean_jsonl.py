@@ -19,7 +19,7 @@ def process_jsonl_line(line):
             return data
 
     except json.JSONDecodeError:
-        # Skip lines that are not valid JSON
+       
         pass
 
     return None
