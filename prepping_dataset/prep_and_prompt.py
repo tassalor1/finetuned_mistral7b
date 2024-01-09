@@ -9,9 +9,12 @@ import random
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 import queue
+from langchain.chains.summarize import load_summarize_chain
 nltk.download('punkt')
 
-
+# summarising text
+os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY   
+llm = ChatOpenAI(temperature=0, model_name="gpt-3.5-turbo-16k")
 
 class prep_and_prompt():
     
@@ -26,7 +29,6 @@ class prep_and_prompt():
         self.story = None
         self.segments = {}
         self.files_processed = 0
-        self.json_objects_created = 0
         self.json_objects_batch = []
 
 
@@ -61,6 +63,10 @@ class prep_and_prompt():
             # if >= segment_size will add this batch to dict
             if len(current_segment) >= segment_size:
                 segment_text = self.tokenizer.decode(current_segment)
+                chain = load_summarize_chain(llm, 
+                            chain_type="map_reduce"
+                            )
+                output_w = chain.run(cleaned_docs)
                 self.segments[f'Segment: {seg_num}'] = segment_text
                 current_segment = []
                 seg_num += 1
@@ -185,13 +191,10 @@ class prep_and_prompt():
 
     def poll_prompt(self, job_queue, json_batch_size):
         total_processed = 0
-        batch_start_time = None
         with ThreadPoolExecutor(max_workers=30) as executor:
             while True:
                 try:
                     job_id, segment = job_queue.get(timeout=30)  # waits 30 secs for a job_id - if not will call queue.empty
-                    if total_processed % json_batch_size == 0:  # Start timing at the beginning of a new batch
-                        batch_start_time = time.time()
                     future = executor.submit(self.poll_for_result, job_id)
                     output = future.result()
 
@@ -204,10 +207,7 @@ class prep_and_prompt():
                             print(f'Completed polling for {total_processed} segments')
 
                         # dumps segments once it hits specific size
-                        if len(self.json_objects_batch) >= json_batch_size:
-                            batch_end_time = time.time()
-                            batch_execution_time = batch_end_time - batch_start_time
-                            print(f"Time to process and dump {100} segments: {batch_execution_time:.2f} seconds")
+                        if len(self.json_objects_batch) >= json_batch_size: 
                             self.dump_jsonl(self.json_objects_batch)
                             self.json_objects_batch = []
 
@@ -231,7 +231,7 @@ class prep_and_prompt():
                     print(f"Prompt generation thread starting")
 
         # start polling in a separate thread
-        time.sleep(20) # wait 20 secs so there is job_ids generated
+        time.sleep(10) # wait so job_ids generated
         polling_thread = threading.Thread(target=self.poll_prompt, args=(job_queue, json_batch_size,))
         polling_thread.start()
         if self.enable_logging:
@@ -270,4 +270,3 @@ class prep_and_prompt():
                     print(f"Finished processing file: {filename}")
         if self.enable_logging:
             print(f"Total files processed: {self.files_processed}")
-            print(f"Total JSON objects created: {self.json_objects_created}")
